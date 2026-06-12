@@ -34,6 +34,14 @@ jobs:
       - name: Ensure DB directory
         run: mkdir -p data
 
+      - name: Restore DB cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/insights.sqlite
+          key: pharma-bio-db-${{ github.run_id }}
+          restore-keys: |
+            pharma-bio-db-
+
       - name: Run briefing
         run: python src/main.py $DAILY_RUN_ARGS
         env:
@@ -44,6 +52,12 @@ jobs:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
 
+      - name: Save DB cache
+        uses: actions/cache/save@v4
+        with:
+          path: data/insights.sqlite
+          key: pharma-bio-db-${{ github.run_id }}
+
       - name: Prepare Pages site
         run: |
           mkdir -p public
@@ -51,6 +65,15 @@ jobs:
           cp -r briefings public/briefings
           cp data/insights.sqlite public/insights.sqlite
           touch public/.nojekyll
+
+      - name: Upload briefing artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pharma-bio-briefing
+          path: |
+            briefings/*.md
+            briefings/dashboard/index.html
+            data/insights.sqlite
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
