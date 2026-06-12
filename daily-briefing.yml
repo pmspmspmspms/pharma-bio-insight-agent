@@ -1,0 +1,96 @@
+name: Daily Pharma Bio Dashboard
+
+on:
+  schedule:
+    # 00:00 UTC = 09:00 Asia/Seoul
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Ensure DB directory
+        run: mkdir -p data
+
+      - name: Restore DB cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/insights.sqlite
+          key: pharma-bio-db-${{ github.run_id }}
+          restore-keys: |
+            pharma-bio-db-
+
+      - name: Run briefing
+        run: python src/main.py $DAILY_RUN_ARGS
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          DAILY_RUN_ARGS: ${{ vars.DAILY_RUN_ARGS }}
+          BRIEFING_DB_PATH: data/insights.sqlite
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+
+      - name: Save DB cache
+        uses: actions/cache/save@v4
+        with:
+          path: data/insights.sqlite
+          key: pharma-bio-db-${{ github.run_id }}
+
+      - name: Prepare Pages site
+        run: |
+          mkdir -p public
+          cp briefings/dashboard/index.html public/index.html
+          cp -r briefings public/briefings
+          cp data/insights.sqlite public/insights.sqlite
+          touch public/.nojekyll
+
+      - name: Upload briefing artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pharma-bio-briefing
+          path: |
+            briefings/*.md
+            briefings/dashboard/index.html
+            data/insights.sqlite
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
